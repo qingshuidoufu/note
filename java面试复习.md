@@ -1540,3 +1540,517 @@ BigDecimal BigInteger也使用了享元模式
 在web学习中, 设计Servlet时为了保证其线程安全, 都会有以下建议, 不要为Servlet设置成员变量, 这种没有任何成员变量的类线程是安全的
 
 - 因为成员变量保存的数据可以称为状态信息, 因此没有成员变量就称之为无状态
+
+
+
+## 线程池
+
+### 自定义线程池
+
+![image-20210806150418977](images/java面试复习/image-20210806150418977.png)
+
+![image-20210806150732662](images/java面试复习/image-20210806150732662.png)
+
+![image-20210806150752830](images/java面试复习/image-20210806150752830.png)
+
+![image-20210806150818024](images/java面试复习/image-20210806150818024.png)
+
+![image-20210806150834366](images/java面试复习/image-20210806150834366.png)
+
+![image-20210806150851520](images/java面试复习/image-20210806150851520.png)
+
+![image-20210806150901253](images/java面试复习/image-20210806150901253.png)
+
+![image-20210806150910427](images/java面试复习/image-20210806150910427.png)
+
+![image-20210806150919360](images/java面试复习/image-20210806150919360.png)
+
+## ThreadPoolExecutor
+
+![image-20210807051441655](images/java面试复习/image-20210807051441655.png)
+
+### 线程池状态
+
+ThreadPoolExecutor使用int的高3位来表示线程池状态,低29位表示线程数量
+
+![image-20210807051544639](images/java面试复习/image-20210807051544639.png)
+
+从数字上比较, TERMINATED>TIDYING>STOP>SHUTDOWN>RUNNING
+
+这些信息存储在一个原子变量ctl中, 目的是将线程池状态和线程个数合二为一,这样就可以用一次cas原子操作进行赋值
+
+![image-20210807052227752](images/java面试复习/image-20210807052227752.png)
+
+### 构造方法
+
+![image-20210807052251997](images/java面试复习/image-20210807052251997.png)
+
+工作方式:
+
+![image-20210807053520100](images/java面试复习/image-20210807053520100.png)
+
+救急线程有生存时间, 核心线程没有生存时间, 救急线程当阻塞队列放不下任务就会创建救急线程(相当于插队了)
+
+- 线程池中刚开始没有线程, 当一个任务提交给线程池后, 线程池会创建一个新线程来执行任务
+- 当线程数达到corePoolSize并且没有线程空闲, 这时候再加入任务, 新加的任务会被加入workQueue队列排队, 直到有空闲线程
+- 如果队列选择了有界队列, 那么任务超过了队列大小, 会创建maxinumPoolSize-corePoolSize数目的线程来救急
+- 如果线程达到了maximumPoolSize仍然有新任务这时会执行拒接策略, 拒绝策略jdk提供了4中实现, 其他著名框架也提供了实现
+  - AbortPolicy 让调用者抛出RejectExecutionException异常, 这是默认策略
+  - CallerRunsPolicy让调用者运行任务
+  - DiscarPolicy放弃本次任务
+  - DiscardOldestPolicy放弃队列中最早的任务, 本任务取代之
+  - Dubbo的实现, 在抛出RejectException异常之前记录日志, 并dump线程栈信息, 方便定位问题
+  - Netty的实现, 是创建一个新线程来执行任务
+  - ActiveMQ的实现 带超时等待(60s)尝试放入队列, 类似我们之前自定义的拒绝策略
+  - PinPoint的实现, 它使用了一个拒绝策略链, 会足以尝试策略链每种拒绝策略
+- 当高峰过后, 超过corePoolSize的救急线程如果一段时间没有任务做, 需要结束节省资源, 这个时间由keepAliveTime和unit来做
+
+![image-20210807055557944](images/java面试复习/image-20210807055557944.png)
+
+### newFixedThreadPool
+
+![image-20210807060330235](images/java面试复习/image-20210807060330235.png)
+
+特点
+
+- 核心线程数==最大线程数(没有救急线程), 因此无需超时时间
+- 阻塞队列是无界的, 课程放任意数量的任务
+
+评价
+
+- 适用任务量是已知的, 相对耗时的任务
+
+### newCachedThreadPool
+
+![image-20210807061331822](images/java面试复习/image-20210807061331822.png)
+
+特点:
+
+- 核心线程是0, 最大线程数是Integer.MAX_VALUE, 救急线程空闲生存时间是60s,
+  - 全部线程都是救急线程
+  - 救急线程可以无限创建
+- 队列采用了synchronousQueue实现的特点, 它没有容量, 没有线程来取是放不进去的(一手交钱一手交货)
+
+![image-20210807061640961](images/java面试复习/image-20210807061640961.png)
+
+![image-20210807061723381](images/java面试复习/image-20210807061723381.png)
+
+评价:
+
+- 整个线程池表现为线程数会根据任务量不断增长, 没有上限, 当任务执行完毕后, 空闲1分钟释放线程
+- 适合任务数比较密集, 但每个任务执行时间较短的情况
+
+### newSingleThreadExecutor
+
+![image-20210807062057796](images/java面试复习/image-20210807062057796.png)
+
+使用场景:
+
+- 希望多个任务排队执行, 线程数固定为1, 任务数多于1时, 会放入无界队列排队, 任务执行完毕后, 这唯一的线程也不会被释放
+
+区别:
+
+- 自己创建一个单线程串行执行任务, 如果任务执行失败而终止那么没有任何补救措施, 而线程池还会新建一个线程, 保证池的正常工作
+- Executor.newSingleThreadExecutor()线程个数始终为1, 不能修改
+  - FinalzableDelegateExecutorService应用的是装饰器模式, 只对外暴露了ExecutorService接口, 因此不能调用ThreadPoolExecutor中特有的方法
+- Executor.newFixedThreadPool(1)初始为1, 以后还能修改
+  - 对外暴露的是ThreadPoolExecutor对象, 可以强转后调用setCorePoolSize等方法进行修改(single这种不能改)
+
+### 提交任务
+
+![image-20210807063411414](images/java面试复习/image-20210807063411414.png)
+
+### 关闭线程池
+
+**shutdown**
+
+![image-20210807065316433](images/java面试复习/image-20210807065316433.png)
+
+**shutdownNow**
+
+![image-20210807065335862](images/java面试复习/image-20210807065335862.png)
+
+**其他方法**
+
+![image-20210807065355511](images/java面试复习/image-20210807065355511.png)
+
+## 异步模式之工作线程
+
+### 定义
+
+让有限的工作线程(Worker) 来轮流处理无限的任务 也可将其归类为分工模式, 它的典型实现就是线程池,也体现经典设计模式中的享元模式
+
+![image-20210807071114645](images/java面试复习/image-20210807071114645.png)
+
+### 饥饿
+
+**固定的大小**线程池会有饥饿现象
+
+- 两个工人是同一个线程中的两个线程
+- 他们要做的事情是: 为客人点餐后到后厨做菜, 这是两个阶段的工作
+  - 客人点餐: 必须先点完餐, 等菜做好, 上菜, 在此期间处理点餐的工人必须等待
+  - 后厨做菜: 没啥好说的做就是了
+
+- 比如工人A处理了点餐任务, 接下来要等工人B把菜做好, 然后上菜, 他两配合蛮好
+- 但是现在同时来了两个客人, 这个时候工人A和工人B都去处理点餐了, 这时没人做菜了, 饥饿
+
+![image-20210807071451648](images/java面试复习/image-20210807071451648.png)
+
+![image-20210807071459886](images/java面试复习/image-20210807071459886.png)
+
+![image-20210807072511705](images/java面试复习/image-20210807072511705.png)
+
+![image-20210807072519225](images/java面试复习/image-20210807072519225.png)
+
+### 创建多少线程合适?
+
+- 过小会导致程序不能充分利用系统资源, 容易导致饥饿
+- 过大会导致更多的线程上下文切换, 占用更多内存
+
+### cpu密集型运算
+
+通常采用cpu核数+1能够实现最优cpu利用率, +1是保证当线程由于页缺失故障(操作系统)或者其他原因导致暂停时, 额外的这个线程能够顶上去, 保障cpu时钟周期不被浪费
+
+### IO密集型运算
+
+cpu不总是处于繁忙状态, 例如, 当你执行计算时, 这时候会使用cpu资源, 但是当你执行IO操作时候,远程RPC调用, 包括进行数据库操作时, 这时候CPU就会闲下来, 你可以利用多线程提高利用率
+
+![image-20210807181238871](images/java面试复习/image-20210807181238871.png)
+
+### 任务调度线程池
+
+在 **任务调度线程池**功能加入之前, 可以用java.util.Timer来实现定时功能, Time有点在于简单易用, 但是由于所有任务都是由同一个线程来调度, 因此所有任务都是串行执行的, 同一时间内只能有一个任务在执行, 前一个任务的延迟或异常都将会影响到之后的任务
+
+![image-20210807181815694](images/java面试复习/image-20210807181815694.png)
+
+![image-20210807181823563](images/java面试复习/image-20210807181823563.png)
+
+![image-20210807181856097](images/java面试复习/image-20210807181856097.png)
+
+![image-20210807181920408](images/java面试复习/image-20210807181920408.png)
+
+![image-20210807181931187](images/java面试复习/image-20210807181931187.png)
+
+评价:
+
+- 整个线程池表现为: 线程 数固定, 任务数多余线程数时, 会放入无界队列排队, 任务执行完毕后, 这些线程也不会被释放, 用来执行延迟或反复执行的任务
+
+### 正确处理异常
+
+1. 自己用try-catch包住处理
+
+   ![image-20210808013314469](images/java面试复习/image-20210808013314469.png)
+
+2. 不用Runnable用Callable配合Future
+
+   ![image-20210808013326351](images/java面试复习/image-20210808013326351.png)
+
+
+
+## TomCat线程池
+
+![image-20210808013415417](images/java面试复习/image-20210808013415417.png)
+
+- LimitLatch用来限流, 可以控制最大连接个数, 类似JUC中的SeMaphore后面再讲
+- Acceptor只负责 **接收新的socket连接**
+- Poller只负责监听socket chancel是否有 **可读的IO事件**
+- Executor线程池中的工作线程最终负责 **处理请求**
+
+
+
+tomcat线程池拓展了TheadPoolExcutor, 行为稍有不同
+
+- 如果总线程达到了maximumPoolSize
+  - 这时不会立即抛RejectExeception异常
+  - 而是会再次尝试讲任务放入队列, 如果还失败 ,才抛出RejectExecutorException异常
+
+![image-20210808013817271](images/java面试复习/image-20210808013817271.png)
+
+![image-20210808013825794](images/java面试复习/image-20210808013825794.png)
+
+![image-20210808013833091](images/java面试复习/image-20210808013833091.png)
+
+![image-20210808013844154](images/java面试复习/image-20210808013844154.png)
+
+![image-20210808013852711](images/java面试复习/image-20210808013852711.png)
+
+## Fork/Join
+
+### 概念
+
+jdk1.7后加入的线程池实现, 它的体现是一种分治的思想, 适用于能够进行任务拆分的cpu密集型运算
+
+所谓任务拆分, 就是讲一个大任务拆分为算法上相同的小任务, 直到不能拆分位置, 跟递归相关的一些计算, 如归并排序/斐波那契数列/都可以用分治思想求解
+
+Fork/Join再分支的基础上加入了多线程, 可以把每个任务的分解和合并交给不同线程来完成,进一步提升了运算效率
+
+Fork/Join默认会创建和cpu核心数大小相同的线程池
+
+### 使用
+
+提交给Fork/Join线程池的任务需要继承RecuresiveTask(有返回值)或者RecursiveAction(无返回值), 例如 下面定义了一个1-n之间的整数求和任务
+
+![image-20210808060639351](images/java面试复习/image-20210808060639351.png)
+
+![image-20210808060653155](images/java面试复习/image-20210808060653155.png)
+
+![image-20210808060701546](images/java面试复习/image-20210808060701546.png)
+
+![image-20210808060734580](images/java面试复习/image-20210808060734580.png)
+
+![image-20210808060747506](images/java面试复习/image-20210808060747506.png)
+
+![image-20210808060758391](images/java面试复习/image-20210808060758391.png)
+
+## AQS原理
+
+### 概述
+
+全程是AbstractQueuedSynchronized, 是阻塞式锁和相关的同步器工具的框架
+
+特点
+
+- 用state属性来表示资源的状态(分独占模式和共享模式), 子类需要定义如果维护这个状态, 控制如果获取锁和释放锁
+  - getState - 获取state状态
+  - setState - 设置state状态
+  - compareAndSetState - cas机制设置state状态
+  - 独占模式是只有一个线程能够访问资源, 而共享模式可以允许多个线程访问资源
+- 提供了基于FIFO的等待队列, 类似于Monitor的EntryList
+- 条件变量 来实现等待/唤醒机制, 支持多个条件变量, 类似于Monitor的WaitList
+
+
+
+子类主要实现这样一些方法(默认会抛出UnsupportedOperationException)
+
+- tryAcquire
+
+- tryRelease
+
+- tryAcquireShared
+
+- tryReleaseShared
+
+- isHeldExclusively
+
+  ![image-20210808094143749](images/java面试复习/image-20210808094143749.png)
+
+![image-20210808094156284](images/java面试复习/image-20210808094156284.png)
+
+![image-20210808094210501](images/java面试复习/image-20210808094210501.png)
+
+![image-20210808094219636](images/java面试复习/image-20210808094219636.png)
+
+不可重入测试
+
+如果改为以下代码, 会发现他们自己也会被挡住(只会打印一次locking)
+
+![image-20210808094302747](images/java面试复习/image-20210808094302747.png)
+
+### 心得
+
+早期程序员会通过一种同步器去实现另一种相近同步器, 例如可重入锁去实现信号量, 或反之, 这显然不够优雅, 于是再JSR166(java 规范提案)中创建了AQS, 提供了这种同步器机制
+
+**目标**
+
+AQS要实现的功能目标
+
+- 阻塞版本获取锁acquire和非阻塞版本获取锁tryAcquire
+- 获取锁超时机制
+- 同打断取消机制
+- 独占机制和共享机制
+- 条件不满足时的等待机制
+
+**设计**
+
+AQS的基本思想其实很简单
+
+获取锁的逻辑
+
+![image-20210808094616362](images/java面试复习/image-20210808094616362.png)
+
+释放锁的逻辑
+
+![image-20210808094627851](images/java面试复习/image-20210808094627851.png)
+
+要点
+
+- 原子维护state状态
+- 阻塞及恢复线程
+- 维护队列
+
+1. state设计
+
+   - state使用了volatile配合cas保证其修改时的原子性
+   - state使用了32bit int来维护同步状态, 因为当时使用long在很多平台下测试结果并不理想
+
+2. 阻塞恢复设计
+
+   - 早期的控制线程暂停和恢复的api有suspend和resume, 但他们是不可用的, 因为如果先调用了resume那么suspend将感知不到
+   - 解决方法是使用park/unpark来实现线程的暂停和恢复, 具体原理在之前已经讲过, 先unpark再park也没问题
+   - park/upark是针对线程的, 而不是针对同步器的, 因此控制粒度更为精细
+   - park线程还可以通过interrupt打断
+
+3. 队列设计
+
+   - 使用了FIFO先入先出队列, 并不支持优先级队列
+
+   - 设计时借鉴了CLH队列, 它是一种单向无锁队列
+
+     ![image-20210808095142708](images/java面试复习/image-20210808095142708.png)
+
+队列中有head和tail两个指针节点, 都用volatile修饰配合cas使用,每个节点都有state维护节点状态
+
+入队伪代码, 只需要考虑tail赋值的原子性
+
+![image-20210808095240463](images/java面试复习/image-20210808095240463.png)
+
+CLH好处:
+
+- 无锁, 使用自旋
+- 快速, 无阻塞
+
+AQS在一些方面改进了CLH
+
+![image-20210808095326621](images/java面试复习/image-20210808095326621.png)
+
+![image-20210808095334093](images/java面试复习/image-20210808095334093.png)
+
+## ReetrantLock原理
+
+![image-20210808110910421](images/java面试复习/image-20210808110910421.png)
+
+### 非公平锁实现原理
+
+![image-20210808110937366](images/java面试复习/image-20210808110937366.png)
+
+NonfairSync继承自AQS
+
+没有竞争时
+
+![image-20210808111011768](images/java面试复习/image-20210808111011768.png)
+
+第一个竞争出现时
+
+Threan-1执行了
+
+1. CAS尝试将state由1改为0, 结果失败了
+
+2. 进入tryAcquire逻辑, 这时state已经是1了, 结果仍然是失败
+
+3. 接下来进入addWaiter逻辑, 构造Node队列
+
+   - 图中黄色三角表示该Node的waitStatus状态, 其中0为默认正常状态
+
+   - Node的创建是懒惰的
+
+   - 其中第一个Node称为哑元(Dummy)或者哨兵, 用来占位, 并不关联线程
+
+     
+
+![image-20210808111333974](images/java面试复习/image-20210808111333974.png)
+
+当前线程进入acquireQueue逻辑
+
+1. acquiredQueue会在一个死循环中不断尝试获得锁, 失败后会进入park阻塞
+2. 如果自己是紧邻这head(排第二位), 那么再次tryAcquire尝试获取锁, 当然这是state仍为1, 失败
+3. 进入shouldParkAfterFailedAcquire逻辑, 将前驱node, 即head的waitStatus改为-1, 这次返回false
+
+![image-20210808111615311](images/java面试复习/image-20210808111615311.png)
+
+
+
+4. shuoldParkAfterFailedAcquire执行完毕回到acquireQueued, 再次tryAcquire尝试获取锁, 当然这时state仍为1, 失败
+5. 当再次进入shuoldParkAfterFailedAcquire时, 这是因为其前驱node的waitStatus已经是-1, 这次返回true
+6. 进入parkAndCheckInterrupt, Thread-1 park(灰色表示)
+
+![image-20210808111902641](images/java面试复习/image-20210808111902641.png)
+
+再次有多个线程经过上述过程竞争失败, 变成这个样子
+
+![image-20210808111934155](images/java面试复习/image-20210808111934155.png)
+
+Thread-01释放锁, 进入tryRelease流程, 如果成功
+
+- 设置exclusiveOwnerThread为null
+- state-0
+
+![image-20210808112034382](images/java面试复习/image-20210808112034382.png)
+
+当前队列不为null, 并且head的waitStatus=-1, 进入unparkSuccessor流程
+
+找到队列中离head最近的一个Node(没取消的), unpark恢复其运行, 本例中为Thread-1
+
+回到Thread-1的acquireQueued流程
+
+![image-20210808112230777](images/java面试复习/image-20210808112230777.png)
+
+如果加锁成功(没有竞争), 会设置
+
+- exclusiveOwnerThread为Thread-1,state=1
+- head指向刚刚Thread-1所在的Node, 该Node清空Thread
+- 原本的head因为从链表中断开, 而可被垃圾回收
+
+如果这时候有其他线程来竞争(非公平的体现), 例如这时有Thread-4来了
+
+![image-20210808112444989](images/java面试复习/image-20210808112444989.png)
+
+如果不巧又被Thread-4占了先
+
+- Thread-4被设置为exclusiveOwnerThread, state=1
+- Thread-4再次进入acquireQueue流程, 获取锁失败, 重新进入park阻塞
+
+### 条件变量实现原理
+
+每个条件变量其实对应这一个等待队列, 其实现类是ConditionObject
+
+**await流程**
+
+开始Thread-0持有锁, 调用await, 进入ConditionObject的addConditionWaiter流程, 创建新的Node,状态为-2(Node.CONDITION), 关联Thread-0, 加入等待队列尾部
+
+![image-20210808143215046](images/java面试复习/image-20210808143215046.png)
+
+接下来进入AQS的fullyRelease流程, 释放同步器上的锁
+
+![image-20210808143246458](images/java面试复习/image-20210808143246458.png)
+
+unpark AQS队列中的下一个节点, 竞争锁, 假设没有其他竞争线程 那么Thread-1竞争成功
+
+![image-20210808143343136](images/java面试复习/image-20210808143343136.png)
+
+park阻塞Thread-0
+
+![image-20210808143403663](images/java面试复习/image-20210808143403663.png)
+
+**Signal流程**
+
+假设Thread-1要来唤醒Thread-0
+
+![image-20210808143437222](images/java面试复习/image-20210808143437222.png)
+
+进入ConditionObject的doSignal流程, 取得等待队列中的第一个Node, 即Thread-0所在Node
+
+![image-20210808143525609](images/java面试复习/image-20210808143525609.png)
+
+执行transferForSignal流程, 将Node加入AQS队列尾部, 将Thread-0的waitStatus改为0,  Thread-3的waitStatus改为1
+
+![image-20210808143630699](images/java面试复习/image-20210808143630699.png)
+
+Thread-1释放锁, 进入unlock流程, 略
+
+## ReentrantReadWriteLock读写锁原理
+
+![image-20210808154132357](images/java面试复习/image-20210808154132357.png)
+
+![image-20210808154145460](images/java面试复习/image-20210808154145460.png)
+
+![image-20210808154157361](images/java面试复习/image-20210808154157361.png)
+
+![image-20210808154223976](images/java面试复习/image-20210808154223976.png)
+
+![image-20210808154346649](images/java面试复习/image-20210808154346649.png)
+
+![image-20210808154357701](images/java面试复习/image-20210808154357701.png)
+
+![image-20210808154408055](images/java面试复习/image-20210808154408055.png)
+
+![image-20210808154419813](images/java面试复习/image-20210808154419813.png)
