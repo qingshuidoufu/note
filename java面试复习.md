@@ -2156,3 +2156,75 @@ StampedLock原理
 
 有问题, ConcurrentHashMap是线程安全的只是其中get put等方法是安全的, 他们组合起来就不安全了.
 
+## LinkedBlockingQueue
+
+### 基本入队出队
+
+![image-20210809190220052](images/java面试复习/image-20210809190220052.png)
+
+![image-20210809190233050](images/java面试复习/image-20210809190233050.png)
+
+![image-20210809190253381](images/java面试复习/image-20210809190253381.png)
+
+![image-20210809190304465](images/java面试复习/image-20210809190304465.png)
+
+![image-20210809190315383](images/java面试复习/image-20210809190315383.png)
+
+### 加锁分析
+
+ **高明之处**在于用于两把锁和dummy节点
+
+- 用一把锁, 同一时刻, 最多只允许有一个线程(生产者或消费者, 二选一)执行
+- 用两把锁, 同一时刻, 可以允许两个线程(一个生产者与一个消费者)执行
+  - 消费者与消费者线程仍然串行
+  - 生产者与生产者线程仍然串行
+
+线程安全分析
+
+- 当节点总数大于2时,(包括Dummy节点), putLock保证的是last节点的线程安全, takeLock保证的是head节点的线程安全, 两把锁保证了入队和出队没有竞争
+- 当节点总数等于2时,(即一个dummy节点, 一个正常节点) 这时候, 仍是两把锁锁住两个对象, 不会竞争
+- 当节点数等于1时(即一个dummy节点)这时take线程会被notEmpty条件阻塞, 有竞争, 会阻塞
+
+![image-20210809190904408](images/java面试复习/image-20210809190904408.png)
+
+![image-20210809190914016](images/java面试复习/image-20210809190914016.png)
+
+![image-20210809190936344](images/java面试复习/image-20210809190936344.png)
+
+### 性能比较
+
+主要列举LinkBlockingQueue与ArrayBlockingQueue的性能比较
+
+- Linked支持有界 Array强制有界
+- Linked支持链表, Array实现是数组
+- Linked是懒惰的 而Array需要提前初始化Node数组
+- Linked每次入队会产生新的Node, 而Array的Node是提前创建好的
+- Linked两把锁, Array一把锁
+
+## ConcurrentLinkedQueue
+
+ConcurrentLinkedQueue的设计和LinkedBlockingQueue非常像, 也是
+
+- 两把 **锁**, 同一时刻, 可以允许两个线程同时(一个生产者一个消费者)执行
+- dummy节点的引入让两把 **锁**将来锁住的是不同对象, 避免竞争
+- 只是这把 **锁**用了cas来实现
+
+事实上, ConcurrentLinkedQueue的应用是非常广泛的
+
+例如之前说到的Tomcat的Connector结构时, Acceptor作为生产者向Poller消费者传递事件消息的时候, 正是采用了ConcurrentLinkedQueue将SocketChanel给Poller使用
+
+![image-20210809202542991](images/java面试复习/image-20210809202542991.png)
+
+## CopyOnWriteArrayList
+
+`CopyOnWriteArraySet`是他的马甲, 底层实现从用了 `写入时拷贝`的思想, 增删改操作将会从底层数组拷贝一份,更改操作再新数组上执行, 这时不影响其他线程的 **并发读,读写分析**,以新增为例:
+
+ 
+
+![image-20210809202824586](images/java面试复习/image-20210809202824586.png)
+
+![image-20210809202836737](images/java面试复习/image-20210809202836737.png)
+
+![image-20210809202848028](images/java面试复习/image-20210809202848028.png)
+
+![image-20210809202910422](images/java面试复习/image-20210809202910422.png)
