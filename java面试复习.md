@@ -2054,3 +2054,105 @@ Thread-1释放锁, 进入unlock流程, 略
 ![image-20210808154408055](images/java面试复习/image-20210808154408055.png)
 
 ![image-20210808154419813](images/java面试复习/image-20210808154419813.png)
+
+StampedLock原理
+
+该类jdk8加入, 是为了进一步优化读性能, 它的特点是在使用读锁, 写锁时都必须配合 **戳**使用
+
+![image-20210809053319867](images/java面试复习/image-20210809053319867.png)
+
+![image-20210809053327365](images/java面试复习/image-20210809053327365.png)
+
+乐观锁, StampedLock支持 `tryOptimisticRead()`方法(乐观锁), 读取完毕后需要做一次 `戳校验` 如果校验通过, 表示这期间确实没有写操作, 数据可以安全使用, 如果检验没同僧o, 需要重新获取读锁, 保证数据安全
+
+![image-20210809053514231](images/java面试复习/image-20210809053514231.png)
+
+提供一个数据容器类, 内部分别使用读锁保护数据的 `read()`方法, 写锁保护 `write()` 方法
+
+测试 `读-读`可以优化
+
+![image-20210809053627595](images/java面试复习/image-20210809053627595.png)
+
+![image-20210809053637080](images/java面试复习/image-20210809053637080.png)
+
+测试 `读-写`时优化读不加读锁
+
+![image-20210809053721335](images/java面试复习/image-20210809053721335.png)
+
+![image-20210809053729668](images/java面试复习/image-20210809053729668.png)
+
+**注意**
+
+- stampedLock不支持条件变量
+- stampedLock不支持重入
+
+## Semaphore
+
+### 基本使用
+
+信号量, 用来限制能同时访问共享资源的线程上限
+
+![image-20210809054954176](images/java面试复习/image-20210809054954176.png)
+
+![image-20210809055004163](images/java面试复习/image-20210809055004163.png)
+
+### Semaphore应用
+
+- 使用Semaphore限流, 在访问高峰期时, 让请求线程阻塞, 高峰期过去再释放许可, 当然它只适合限制单机线程数量, 并且仅限制线程数, 不是限制访问资源数(如连接数, 请对比Tomcat LimitLatch的实现)
+- 用Semaphore实现简单线程池, 对比 **享元模式**下的应用(用wait/notify), 性能和可读性显然更好,注意下面实现中线程数,和数据库连接数是相等的
+
+
+
+![image-20210809063629756](images/java面试复习/image-20210809063629756.png)
+
+![image-20210809063640411](images/java面试复习/image-20210809063640411.png)
+
+### Semphore原理
+
+![image-20210809101625169](images/java面试复习/image-20210809101625169.png)
+
+![image-20210809102113438](images/java面试复习/image-20210809102113438.png)
+
+![image-20210809102523615](images/java面试复习/image-20210809102523615.png)
+
+## CountdownLatch
+
+用于进行线程间同步协作,等待所有线程完成倒计时]
+
+其中构造参数用来初始化等待计数器, await()用来等待计数器归零, contDown()用来让计数器减一
+
+![image-20210809102813031](images/java面试复习/image-20210809102813031.png)
+
+![image-20210809102823630](images/java面试复习/image-20210809102823630.png)
+
+![image-20210809111056699](images/java面试复习/image-20210809111056699.png)
+
+## CyclicBarrier
+
+循环栅栏, 用来进行线程协作, 等待线程满足某个计数, 构造时设置 **计数个数**, 每个线程执行到某个需要 **同步**的时刻调用await() 方法等待, 当等待的线程数满足 **计数个数**时, 继续执行
+
+![image-20210809111238058](images/java面试复习/image-20210809111238058.png)
+
+**注意**
+
+- CyclicBarrier和CountdownLatch的主要区别在于CyclicBarrier是可重用的
+- CyclicBarrier可以被比喻为 **人满发车**
+
+## 线程安全集合类概述
+
+![image-20210809112223630](images/java面试复习/image-20210809112223630.png)
+
+## ConcurrentHashMap
+
+
+
+![image-20210809142205895](images/java面试复习/image-20210809142205895.png)
+
+![image-20210809142221588](images/java面试复习/image-20210809142221588.png)
+
+
+
+![image-20210809142240934](images/java面试复习/image-20210809142240934.png)
+
+有问题, ConcurrentHashMap是线程安全的只是其中get put等方法是安全的, 他们组合起来就不安全了.
+
