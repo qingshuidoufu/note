@@ -182,6 +182,8 @@ if (Pizza.PizzaStatus.DELIVERED == TestColor.GREEN);      // 编
 - Vector: 底层用Object[]存储,线程安全
 - LinkList: 底层以循环链表的形式实现, 增加删除效率高,线程不安全
 
+
+
 ## set
 
 - 集合, 非线性, 去除重复
@@ -197,6 +199,8 @@ if (Pizza.PizzaStatus.DELIVERED == TestColor.GREEN);      // 编
 - HashTable:线程安全(但基本不用, 用ConcurrentHashMap来保障线程安全),相对HashMap来说不支持null存储
 - ConcurrenHashMap:底层采用分段数组+链表/红黑二叉树实现
 - TreeMap:根据key排序
+
+
 
 ## 迭代器Iterator
 
@@ -721,6 +725,8 @@ synchronized(lock){
 
 ![image-20210804125104059](images/java面试复习/image-20210804125104059.png)
 
+**park没执行过Unpark的线程**:
+
 1. 当前线程调用Unsafe.park()方法
 2. 检查_counter, 本情况为0, 这时, 获得 _mutex互斥锁
 3. 线程进入 _cond条件变量阻塞
@@ -728,18 +734,26 @@ synchronized(lock){
 
 ![image-20210804125714913](images/java面试复习/image-20210804125714913.png)
 
+**Unpark阻塞的线程:**
+
 1. 调用Unsafe.unpark(Thread_0)方法, 设置 _counter为1
 2. 唤醒 _cond条件变量中的 Thread_0
 3. Thread_0恢复运行
 4. 设置 _counter为0
+
+**Unpark非阻塞的线程:(解释了为何能先Unpark)**:
+
+1. 运行中的线程_Counter为1
+2. 如果执行了park, 发现_Counter为1, 改为0, 程序继续运行
 
 ## 重新理解线程状态转换
 
 ![image-20210804130151851](images/java面试复习/image-20210804130151851.png)
 
 1. 情况1 NEW->RUNNABLE
-   - 当调用t.start()方法时, 由NEW-->RUNNABLE
-
+   
+- 当调用t.start()方法时, 由NEW-->RUNNABLE
+  
 2. 情况2 RUNNABLE-->WAITING
 
    - 线程用synchronized(obj) 获取对象锁后
@@ -1135,7 +1149,7 @@ I_Result 是一个对象，有一个属性 r1 用来保存结果，问，可能�
 
 但我告诉你，结果还有可能是 0 😁😁😁，信不信吧！ 这种情况下是：线程2 执行 ready = true，切换到线程1，进入 if 分支，相加为 0，再切回线程2 执行 num = 2 相信很多人已经晕了 😵😵😵 这种现象叫做指令重排，是 JIT 编译器在运行时的一些优化，这个现象需要通过大量测试才能复现：
 
-如何解决: 使用voatile修饰ready 禁止之前的代码指令重排(num不需要加)
+如何解决: 使用voatile修饰ready 禁止**之前**的代码指令重排(num不需要加)
 
 ## Volatile原理
 
@@ -2228,3 +2242,1111 @@ ConcurrentLinkedQueue的设计和LinkedBlockingQueue非常像, 也是
 ![image-20210809202848028](images/java面试复习/image-20210809202848028.png)
 
 ![image-20210809202910422](images/java面试复习/image-20210809202910422.png)
+
+# JVM学习
+
+- 好处: 
+  - 一次编写,到处运行, 
+  - 自动内存管理, 提供了垃圾回收功能
+  - 数组下标越界检查
+  - 多态
+- 比较: 
+- ![image-20210823213321422](images/java面试复习/image-20210823213321422-1630254270997.png)
+
+![image-20210823214039667](images/java面试复习/image-20210823214039667-1630254273854.png)
+
+## 内存结构
+
+### 程序计数器(program counter register)
+
+![image-20210830021633335](images/java面试复习/image-20210830021633335.png)
+
+作用: 记住下一条jvm指令执行的地址
+
+特点
+
+- 线程私有
+- 不会存在内存溢出
+
+###   虚拟机栈
+
+1. ![image-20210830021701069](images/java面试复习/image-20210830021701069.png)
+
+   - 每个线程运行所需的内存
+
+   - 每个栈由多个栈帧组成, 对应每次方法调用的时候的内存
+
+   - 每个线程只能有一个活动栈帧, 对应当前正在执行的那个方法
+
+     问题:  
+
+     1. 垃圾回收涉及栈内存吗? 不涉及, 方法结束就弹出栈了, 不需要gc参与
+     2. 栈内存越大越好吗? 不是, 物理内存就那么多, 栈内存大了, 线程数会变少, 性能降低
+     3. 方法内的局部变量是否是线程安全的? 看它局部变量有没有逃逸出该方法的范围就完事了.
+
+2. ### 栈内存溢出
+
+   - 栈帧过多栈内存溢出
+   - 栈帧过大导致内存溢出
+
+   线程诊断:
+
+   1. cpu占用过高
+
+      1. `top`定位哪个进程对cpu占用
+
+      2. `ps H -eo pid,tid,%cpu |grep 进程id`(用ps命令进一步定位是哪个线程引起的占用过高)
+      3. 用jstack工具根据线程id找到有问题的线程, 进一步定位到问题代码的源码行数
+
+   2. 程序太长时间没出结果
+
+      jstack查看, 有可能是出现了死锁问题
+
+      
+
+### 本地方法栈
+
+![image-20210830021723293](images/java面试复习/image-20210830021723293.png)
+
+指得是java虚拟机调用本地方法时提供的空间(不是java代码写的代码)
+
+### 堆
+
+通过new关键字, 创建的对象都会使用堆内存
+
+特点:
+
+- 线程共享的, 堆中对象需要考虑线程安全问题
+- 有垃圾回收机制
+
+**堆内存溢出问题**: 堆空间不够, 装不下了
+
+​	诊断: 
+
+ 1. jps工具
+
+    查看系统中有哪些java进程
+
+ 2. jmap工具
+
+    查看堆内存占用情况
+
+ 3. jconsole工具
+
+    图形界面, 多功能检测工具, 可以连续检测
+
+案例:
+
+​	垃圾回收后, 程序占用仍然很高(使用jvitualvm工具查看)
+
+
+
+### 方法区
+
+![image-20210830043519005](images/java面试复习/image-20210830043519005.png)
+
+方法区内存溢出问题:
+
+1. 1.8以前的永久代溢出
+2. 1.8以后的元空间溢出
+
+#### 运行时常量池
+
+常量池就是一张表, 虚拟机指令根据这张表来找到要执行的类名/方法名/参数类型/字面量等信息
+
+运行时常量池, 常量池是 *.class文件中的, 当该类被加载时, 它的常量池信息就会放入运行时常量池, 并把里面的符号地址变为真实地址
+
+**StringTable**(串池)
+
+常量信息先再class中, 会被加载到运行时常量池, 这时候还没有成为对象, 当具体执行到引用代码的时候, 会到StringTable(初始为空)中查找有没有这个常量, 如没有则加入StringTable, 如有则直接用这里的来引用.
+
+​	**字符串拼接**
+
+​		![image-20210830051502257](images/java面试复习/image-20210830051502257.png)
+
+会打印出false, 一个是串池对象, 一个是堆里的
+
+![image-20210830051817229](images/java面试复习/image-20210830051817229.png)
+
+这里是相等的, s5是直接到串池中找"ab"在不在,虚拟机指令跟s3的一模一样(javac在编译器做了优化, 结果已经在编译期间确定为ab)
+
+**intern()方法**: 
+
+​	用来手动将字符串对象放入串池(StringTable)
+
+![image-20210830150205136](images/java面试复习/image-20210830150205136.png)
+
+1.8是放入串池, 如果有则返回串池对象, 没有就放入串池
+
+**面试题:**
+
+![image-20210830153405274](images/java面试复习/image-20210830153405274.png)
+
+如果调换x1和x2位置, 会变成true,(先放入串池了), 如果换成1.6, 则会false, 一个是堆的, 一个是副本放入串池(因为1.6不是直接放入串池的, 而是将对象的副本放入串池)
+
+**StringTable位置**
+
+![image-20210830160145916](images/java面试复习/image-20210830160145916.png)
+
+**StringTable垃圾回收**
+
+StringTable会发生gc
+
+**StringTable性能调优**
+
+	- 调整虚拟机参数 调整StringTable的size(桶个数)
+	- 读取大量字符串对象考虑将字符串对象放入池(字符串intern()手动入池操作)
+
+### 直接内存(操作系统管理)
+
+- 常见NIO操作时, 用于数据缓冲区
+
+- 分配回收成本较高, 但读写性能高
+
+- 不受jvm垃圾回收控制
+
+  如果不分直接内存(有两块内存, 数据有两份, 太浪费了):
+
+![image-20210830223432495](images/java面试复习/image-20210830223432495.png)
+
+​		分配直接内存的情况(java代码和本地方法可以共享访问的内存区域, 是在操作系统中划分的,但是java可以直接用它):
+
+![image-20210830223555565](images/java面试复习/image-20210830223555565.png)
+
+**直接内存溢出**:
+
+​	会溢出
+
+**直接内存释放原理**
+
+​	直接内存的获取和释放是通过Unsafe对象中的方法来进行的, 而不是由java的gc来管理的
+
+​	而byteBuffer直接内存的释放是通过一个Cleanner对象(虚引用(Cleanner关联的对象被回收会触发clean()方法)),clean()方法中使用Unsafe对象的freeMemory()对象
+
+简而言之:
+
+- 使用了Unsafe对象完成对内存的分配回收, 并且回收需要主动调用freeMemory()方法
+- ByteBuffer的实现类内部, 使用了Cleaner(虚引用)来检测ByteBuffer对象, 一旦ByteBuffer对象被垃圾回收, 那么就会由ReferenceHandler线程通过Cleaner的clean()方法调用freeMemory()来释放内存
+
+jvm调优中使用 -xx:+DisableExplicitGC(禁用显式GC) 即禁用了System.gc(), 这破玩意进行了一次full GC,故性能降低
+
+## 垃圾回收
+
+#### 判断垃圾回收
+
+ 1. **引用计数法:**
+
+    没人引用则回收, 但是会有循环引用的问题,导致出现内存泄漏
+
+    ![image-20210831014910214](images/java面试复习/image-20210831014910214.png)
+
+2. **可达性分析:**
+   - java虚拟机中的垃圾回收器采用可达性分析来探索所有存活的对象
+   - 扫描堆中的对象, 看是否能 着GC Root对象为起点的引用链找到该对象, 找不到, 表示可以回收
+   - 哪些对象可以成为 GC Root?
+
+3. **java中的四(五)种引用**
+
+   ![image-20210831021404530](images/java面试复习/image-20210831021404530.png)
+
+   1. 强引用
+
+      直接等号赋值, 就是强引用
+
+   2. 软引用
+
+      C(gc root)对象的强引用对象是一个引用, 该引用指向A2对象, 就是软引用, 如果B对象(GC Root)不再强引用A2对象, 垃圾回收后内存还是不够会被gc掉
+
+   3. 弱引用
+
+      C(gc root)对象的强引用对象是一个引用, 该引用指向A3对象, 就是弱引用, 如果B对象(GC Root)不再强引用A3对象, 垃圾回收后会被gc掉(不管内存充足不)
+
+   **软弱引用可以配合引用队列使用**:
+
+   ​	软/弱引用自身是一个对象, 如果软/弱引用指向的对象被gc了, 那么这两种引用会放入引用队列, 可以对这两种引用进行进一步处理
+
+   1. 虚引用
+
+      ByteBuffer会被垃圾回收掉, 在它被回收时候, 虚引用(Cleaner)被放入引用队列, 然后会有一个RefferenceHandler定时在引用队列中寻找有没有虚引用(Cleaner), 有就调用Cleaner的clean()方法, 释放直接内存
+
+   2. 终结器引用
+
+      所有的java对象继承Object对象, 都有finalize()方法, 对象重写finalize(), jvm创建终结器引用,没强引用时候A4会gc,这时终结器引用放入引用队列(A4还没回收, 由一个优先级低的线程到队列中引用来找A4来释放), 所以工作效率低, 第一次gc都没办法释放掉A4, 而且优先级低难被调用到finalize()
+
+   **虚/终结器引用必须配合引用队列使用**:
+
+
+
+总结:
+
+![image-20210831024020131](images/java面试复习/image-20210831024020131.png)
+
+**软引用举例:**
+
+![image-20210831024333414](images/java面试复习/image-20210831024333414.png)
+
+![image-20210831024914712](images/java面试复习/image-20210831024914712.png)
+
+**软引用配合引用队列(把软引用也给清理了):**
+
+![image-20210831025417302](images/java面试复习/image-20210831025417302.png)
+
+![image-20210831025537104](images/java面试复习/image-20210831025537104.png)
+
+**弱引用举例:**
+
+![image-20210831030049538](images/java面试复习/image-20210831030049538.png)
+
+  辨析: 软引用是第一次gc时候会被忽略, 但是这次gc后内存还是不够就释放软引用的对象. 
+
+​			弱引用是第一次gc时会直接释放(但是不一定全部弱引用都被释放了, 垃圾回收器没发现的就暂时还会被放着)
+
+#### 垃圾回收算法
+
+1. **标记清除**
+
+   ![image-20210831105851874](images/java面试复习/image-20210831105851874.png)
+
+   优点: 速度快
+
+   缺点: 容易产生内存碎片
+
+2. **标记整理**
+
+   ![image-20210831110159522](images/java面试复习/image-20210831110159522.png)
+
+   优点: 没有内存碎片
+
+   缺点: 时间较慢, 涉及内存地址的改变
+
+3. **复制**
+
+   ![image-20210831110521154](images/java面试复习/image-20210831110521154.png)
+
+   复制过去, 然后交换From 和To
+
+   ![image-20210831110633723](images/java面试复习/image-20210831110633723.png)
+
+   优点: 不会产生内存碎片
+
+   缺点: 空间销毁大, 需要两份空间
+
+#### 分代垃圾回收
+
+![image-20210831111346515](images/java面试复习/image-20210831111346515.png)
+
+新的对象首先放伊甸园, 伊甸园装不下了触发MInor GC
+
+![image-20210831111810161](images/java面试复习/image-20210831111810161.png)
+
+存活的对象放到幸存区To中, 生命加1,然后两个幸存区交换
+
+![image-20210831112024823](images/java面试复习/image-20210831112024823.png)
+
+第二次伊甸园满了, 触发第二次Minor GC, 幸存区还能或者的对象再加1
+
+![image-20210831112310783](images/java面试复习/image-20210831112310783.png)
+
+在幸存区的生命超过阈值(15), 不太会被回收了, 丢老年代中去
+
+![image-20210831112454946](images/java面试复习/image-20210831112454946.png)
+
+如果老年代中对象多了, 几乎全满了, 触发一次Full GC
+
+![image-20210831112558952](images/java面试复习/image-20210831112558952.png)
+
+总结:
+
+![image-20210831113415857](images/java面试复习/image-20210831113415857.png)
+
+注意: 大对象(老年代中够空间, 新生代直接放不下)直接放老年代中
+
+​		再放一个大对象(还是新生代放不下, 老年代不够空间),无法gc掉,(第一个大对象有强引用),这时候内存溢出
+
+误区: 如果一个线程中出现内存溢出错误了, 不会影响主线程的运行(内存溢出错误会清除这个线程占用的堆内存)
+
+#### 垃圾回收器
+
+1. **串行**
+
+   - 单线程
+
+   - 堆内存较小, 适合个人电脑
+
+     ![image-20210901025244497](images/java面试复习/image-20210901025244497.png)
+
+2. **吞吐量优先**
+
+   - 多线程
+
+   - 堆内存较大, 多核cpu
+
+   - 让单位时间stw的时间最短
+
+     ![image-20210901030122673](images/java面试复习/image-20210901030122673.png)
+
+3. **响应时间优先**
+
+   - 多线程
+
+   - 堆内存较大,多核cpu
+
+   - 尽可能让stw单次时间最短
+
+     ![image-20210901031936762](images/java面试复习/image-20210901031936762.png)
+
+**垃圾回收器: G1**               
+
+适用场景 :
+
+-  同时注重吞吐量,和低延迟, 默认暂停目标是200ms
+
+- 超大堆内存, 将堆划分为多个大小相等的region
+
+- 整体标记上是标记+整理算法, 两个区域之间是复制算法 
+
+  ![image-20210903002413848](images/java面试复习/image-20210903002413848.png)
+
+  ![image-20210903002646283](images/java面试复习/image-20210903002646283.png)
+
+  **阶段1:**(young collection)
+
+  会STW
+
+  ![image-20210903030311089](images/java面试复习/image-20210903030311089.png)
+
+  ![image-20210903030444591](images/java面试复习/image-20210903030444591.png)
+
+  **阶段2:**(young collection +collection mark)
+
+  - 在young GC的时候会进行GC ROOT的初始标记
+
+  - 老年代占用堆内存比例达到阈值时, 会触发并发标记(不会STW), 由下面jvm参数决定
+
+    -XX:InitiatingHeapOccupancyPercent=percent(默认45%)
+
+  ![image-20210903030726317](images/java面试复习/image-20210903030726317.png)
+
+  **阶段3:**(Mixed collection)
+
+  会对 E/S/O进行全面垃圾回收
+
+  - 最终标记(Remark)会STW
+
+  - 拷贝存活(Evacuation) 会STW
+
+    -XX:MaxGCPauseMillis=ms
+
+  ![image-20210903031730452](images/java面试复习/image-20210903031730452.png)
+
+  - SerialGC
+    - 新生代内存不足发生垃圾收集 - minor GC
+    - 老年代内存不足发生的垃圾收集 - full GC
+
+  - ParallelGC
+    - 新生代内存不足发生的垃圾收集 -minor GC
+    - 老年代内存不足发生的垃圾收集 - minor GC
+  - CMS
+    - 新生代内存不足发生的垃圾收集 - minor GC
+    - 老年代内存不足
+  - G1
+    - 新生代内存不足发生的垃圾收集 -minor GC
+    - 老年代内存不足
+
+**Young Collection 跨代引用**
+
+- 新生代回收的跨代引用(老年代引用新生代) 问题
+
+  ![image-20210903041937516](images/java面试复习/image-20210903041937516.png)
+
+  对老年代区域进行细划分, 如果划分出来的卡出现了引用新生代对象, 则标记这个区域为脏卡
+
+  - 卡表与Rememberd Set
+  - 在引用变更时候通过post-write barrier +dirty card queue
+  - concurrent refinement threads 更新Rememberd Set
+
+**Remark**
+
+- pre-write barrier + satb_mark_queue
+
+![image-20210903042528098](images/java面试复习/image-20210903042528098.png)
+
+黑色是被保留下来, 灰色正在处理, 白色是还未处理, 箭头是强引用(没箭头那个会被垃圾处理掉)
+
+**JDK8字符串去重**
+
+- 优点: 节省大量内存
+- 缺点: 略微多占用了cpu时间, 新生代回收时间稍微增加
+
+-XX:+UseStringDeduplication
+
+![image-20210903043459066](images/java面试复习/image-20210903043459066.png)
+
+- 将所有新分配的字符串放入一个队列
+- 当新生代回收时, G1并发检查是否由字符串重复
+- 如果他们的值一样, 让他们引用同一个char[]
+- 注意, 和String.intern()不一样
+  - String.intern()关注的是字符串对象
+  - 而字符串去重关注的是char[]
+  - 在jvm内部, 使用了不同的字符串表
+
+**JDK8中并发标记卸载类**
+
+所有对象都经过并发标记后, 就能知道哪些类不再被适用, 当一个类加载器的所有类都不再适用, 则卸载它所加载的所有类
+
+-XX:+ClassUnloadingWithConcurrentMark默认启动
+
+**JDK8回收巨型对象**
+
+- 一个对象大于region的一半时, 称之为巨型对象
+
+- G1不会对巨型对象进行拷贝
+
+- 回收时会被优先考虑
+
+- G1会跟踪老年代的所有incoming引用, 这样老年代incoming引用为0的巨型对象就可以在新生代垃圾回收时处理掉
+
+  ![image-20210903044718180](images/java面试复习/image-20210903044718180.png)
+
+  **JDK9并发标记起始时间的调整**
+
+  - 并发标记必须在对空间占满之前完成, 否则退化为FullGC
+  - JDK9之前需要适用-XX: InitiatingHeapOccupancyPercent
+  - JDK9可以动态调整
+    - -XX:InitiationHeapOccupancyPercent来设置初始值
+    - 进行数据采样并动态调整
+    - 总会添加一个安全的空挡空间
+
+#### 垃圾回收调优    
+
+- 内存
+- 锁竞争
+- cpu占用
+- io
+
+确定目标: 低延迟: CMS, G1, ZGC
+
+​					高吞吐量: ParallelGC
+
+**最快的GC是不发生GC**
+
+- 查看FullGC前后的内存占用, 考虑下面几个问题
+
+  - 数据是不是太多
+
+    resultSet=statemet.executeQuery("select * from 大表")  **太大了**
+
+  - 数据表示是否太臃肿
+
+    - 对象图
+    - 对象大小
+
+  - 是否存在内存泄漏
+
+    不用static Map map=
+
+    用软/弱引用或者第三方缓存实现
+
+**新生代调优**
+
+- 新生代特点
+  - 所有的new操作的内存分配非常廉价
+  - TLAB thread-local allocation buffer
+- 死亡对象的回收代价是零
+- 大部分对象用过即死
+- Minor GC的时间远远低于Full GC 
+
+![image-20210903172003606](images/java面试复习/image-20210903172003606.png)
+
+理想情况: 新生代能容纳所有[并发量+(请求+响应)]的数据
+
+​				幸存区大到能保留[当前活跃对象+需要晋升对象]
+
+
+
+- 晋升阈值配置得当, 让长时间存活对象尽快得到晋升
+
+  ![image-20210903183311108](images/java面试复习/image-20210903183311108.png)
+
+**老年代调优**
+
+- CMS的老年代内存越大越好
+- 先观察不做调优, 如果没有Full GC那么已经..., 否则先尝试调优新生代调优
+- 观察发生Full GC时老年代内存占用, 将老年代内存预设调大1/4,- 1/3
+- -XX:CMSInitiatingOccpancyFraction=percent
+
+**案例**
+
+- 案例1: Full GC和Minor  GC频繁
+- 案例2: 请求高峰期发生Full GC, 单次暂停时间特别长(CMS)\
+- 案例3: 老年代充裕情况下, 发生Full GC(1.7)
+
+## 类加载和字节码技术
+
+1. **类文件结构**
+
+   略
+
+2. **字节码指令**
+
+   ![image-20210903205208716](images/java面试复习/image-20210903205208716.png)
+
+   ![image-20210903205623588](images/java面试复习/image-20210903205623588.png)
+
+   ![image-20210903205640438](images/java面试复习/image-20210903205640438.png)
+
+   **图解流程**:
+
+   ![image-20210903210651708](images/java面试复习/image-20210903210651708.png)
+
+   ![image-20210903210708740](images/java面试复习/image-20210903210708740.png)
+
+   ![image-20210903210721071](images/java面试复习/image-20210903210721071.png)
+
+   ![image-20210903210734171](images/java面试复习/image-20210903210734171.png)
+
+   ![image-20210903210745819](images/java面试复习/image-20210903210745819.png)
+
+   ![image-20210903210804420](images/java面试复习/image-20210903210804420.png)
+
+   ![image-20210903210818436](images/java面试复习/image-20210903210818436.png)
+
+   ![image-20210903210834181](images/java面试复习/image-20210903210834181.png)
+
+   ![image-20210903210855350](images/java面试复习/image-20210903210855350.png)
+
+   ![image-20210903210921254](images/java面试复习/image-20210903210921254.png)
+
+   ![image-20210903210934862](images/java面试复习/image-20210903210934862.png)
+
+   ![image-20210903210945798](images/java面试复习/image-20210903210945798.png)
+
+   ![image-20210903211000972](images/java面试复习/image-20210903211000972.png)
+
+   ![image-20210903211020661](images/java面试复习/image-20210903211020661.png)
+
+   **分析i++**
+
+   ![image-20210909120004934](images/java面试复习/image-20210909120004934.png)
+
+   ![image-20210909120029826](images/java面试复习/image-20210909120029826.png)
+
+   ![image-20210909120054851](images/java面试复习/image-20210909120054851.png)
+
+   ![image-20210909120104659](images/java面试复习/image-20210909120104659.png)
+
+   ![image-20210909120112987](images/java面试复习/image-20210909120112987.png)
+
+   ![image-20210909120122068](images/java面试复习/image-20210909120122068.png)
+
+   ![image-20210909120132539](images/java面试复习/image-20210909120132539.png)
+
+   ![image-20210909120143028](images/java面试复习/image-20210909120143028.png)
+
+   **条件判断语句:**
+
+   ![image-20210909120654629](images/java面试复习/image-20210909120654629.png)
+
+   ![image-20210909120707542](images/java面试复习/image-20210909120707542.png)
+
+**循环控制指令:**
+
+![image-20210909120731170](images/java面试复习/image-20210909120731170.png)
+
+![image-20210909120745780](images/java面试复习/image-20210909120745780.png)
+
+**构造方法:**
+
+1. **<cinit>()v**
+
+   ![image-20210909121607553](images/java面试复习/image-20210909121607553.png)
+
+2. **<init>()v**
+
+   
+
+   ![image-20210909121312867](images/java面试复习/image-20210909121312867.png)
+
+   ![image-20210909121326943](images/java面试复习/image-20210909121326943.png)
+
+   ![image-20210909121406174](images/java面试复习/image-20210909121406174.png)
+
+   **try-catch处理**
+
+   ![image-20210910100337504](images/java面试复习/image-20210910100337504.png)
+
+   ![image-20210910100353577](images/java面试复习/image-20210910100353577.png)
+
+   ![image-20210910100409422](images/java面试复习/image-20210910100409422.png)
+
+   ![image-20210910100422673](images/java面试复习/image-20210910100422673.png)
+
+   ![image-20210910100438249](images/java面试复习/image-20210910100438249.png)
+
+   ![image-20210910100452670](images/java面试复习/image-20210910100452670.png)
+
+   **synchronized**
+
+   ![image-20210912115719829](images/java面试复习/image-20210912115719829.png)
+
+1. **编译期处理**
+
+   ![image-20210912120328181](images/java面试复习/image-20210912120328181.png)
+
+   ![image-20210912120858491](images/java面试复习/image-20210912120858491.png)
+
+   ![image-20210912120923890](images/java面试复习/image-20210912120923890.png)
+
+   ![image-20210912120940208](images/java面试复习/image-20210912120940208.png)
+
+   ![image-20210912224427431](images/java面试复习/image-20210912224427431.png)
+
+   ![image-20210912224443972](images/java面试复习/image-20210912224443972.png)
+
+   ![image-20210912225057636](images/java面试复习/image-20210912225057636.png)
+
+   ![image-20210912225118397](images/java面试复习/image-20210912225118397.png)
+
+   ![image-20210912225135796](images/java面试复习/image-20210912225135796.png)
+
+   ![image-20210912230254058](images/java面试复习/image-20210912230254058.png)
+
+   ![image-20210912230518635](images/java面试复习/image-20210912230518635.png)
+
+   ![image-20210912230537042](images/java面试复习/image-20210912230537042.png)
+
+   ![image-20210912233011194](images/java面试复习/image-20210912233011194.png)
+
+   ![image-20210912233027145](images/java面试复习/image-20210912233027145.png)
+
+   ![image-20210912233046683](images/java面试复习/image-20210912233046683.png)
+
+   
+
+2. **类加载阶段**
+
+   ![image-20210913030703810](images/java面试复习/image-20210913030703810.png)
+
+   ![image-20210913030957709](images/java面试复习/image-20210913030957709.png)
+
+   ![image-20210913032520880](images/java面试复习/image-20210913032520880.png)
+
+   ![image-20210913072527156](images/java面试复习/image-20210913072527156.png)
+
+   ![image-20210913072546087](images/java面试复习/image-20210913072546087.png)
+
+   ![image-20210913072606352](images/java面试复习/image-20210913072606352.png)
+
+   
+
+3. **类加载器**
+
+   ![image-20210913072623062](images/java面试复习/image-20210913072623062.png)
+
+   
+
+   ![image-20210913072857391](images/java面试复习/image-20210913072857391.png)
+
+   ![image-20210913072917716](images/java面试复习/image-20210913072917716.png)
+
+   ![image-20210913072935632](images/java面试复习/image-20210913072935632.png)
+
+   ![image-20210913072956206](images/java面试复习/image-20210913072956206.png)
+
+   ![image-20210913095457090](images/java面试复习/image-20210913095457090.png)
+
+   ![image-20210913095526128](images/java面试复习/image-20210913095526128.png)
+
+   ![image-20210913095546951](images/java面试复习/image-20210913095546951.png)
+
+   ![image-20210913095632496](images/java面试复习/image-20210913095632496.png)
+
+   
+
+4. **运行期优化**
+
+![image-20210913233708781](images/java面试复习/image-20210913233708781.png)
+
+![image-20210913233731514](images/java面试复习/image-20210913233731514.png)
+
+![image-20210913233742518](images/java面试复习/image-20210913233742518.png)
+
+![image-20210913233752704](images/java面试复习/image-20210913233752704.png)
+
+![image-20210913233809137](images/java面试复习/image-20210913233809137.png)
+
+![image-20210913233821407](images/java面试复习/image-20210913233821407.png)
+
+![image-20210913233830297](images/java面试复习/image-20210913233830297.png)
+
+![image-20210913233841726](images/java面试复习/image-20210913233841726.png)
+
+![image-20210913233849423](images/java面试复习/image-20210913233849423.png)
+
+![image-20210913233901580](images/java面试复习/image-20210913233901580.png)
+
+![image-20210913233919413](images/java面试复习/image-20210913233919413.png)
+
+## 内存模型
+
+java内存模型就是JMM, dk定义了一套多线程读写共享数据(成员变量/数组), 对数据可见性/有序性/原子性的规则和保障
+
+### 原子性
+
+两个线程对初始值喂0的静态变量一个做自增一个自减同样次数, 结果不一定是0
+
+![image-20210914002047094](images/java面试复习/image-20210914002047094.png)
+
+![image-20210914002219931](images/java面试复习/image-20210914002219931.png)
+
+### 指令交错导致出现数据不一致(没确保原子性)
+
+![image-20210914002742115](images/java面试复习/image-20210914002742115.png)
+
+### 解决: Synchronized(同步关键字)
+
+![image-20210914014758232](images/java面试复习/image-20210914014758232.png)
+
+### 可见性
+
+![image-20210914002833437](images/java面试复习/image-20210914002833437.png)
+
+![image-20210914002910659](images/java面试复习/image-20210914002910659.png)
+
+![image-20210914002947333](images/java面试复习/image-20210914002947333.png)
+
+![image-20210914003037283](images/java面试复习/image-20210914003037283.png)
+
+**解决办法:**volatile(易变关键字)
+
+可以修饰成员变量和静态成员变量, 他可以避免线程从工作缓存中寻找变量的值, 必须到主存中获取它的值, 线程操作volatile变量都是直接操作主存.
+
+![image-20210914003323677](images/java面试复习/image-20210914003323677.png)
+
+![image-20210914003503376](images/java面试复习/image-20210914003503376.png)
+
+### 有序性
+
+![image-20210914003658738](images/java面试复习/image-20210914003658738.png)
+
+![image-20210914003815259](images/java面试复习/image-20210914003815259.png)
+
+![image-20210914003842332](images/java面试复习/image-20210914003842332.png)
+
+![image-20210914004030682](images/java面试复习/image-20210914004030682.png)
+
+![image-20210914004210587](images/java面试复习/image-20210914004210587.png)
+
+![image-20210914004229357](images/java面试复习/image-20210914004229357.png)
+
+![image-20210914004409828](images/java面试复习/image-20210914004409828.png)
+
+![image-20210914004732256](images/java面试复习/image-20210914004732256.png)
+
+![image-20210914004751452](images/java面试复习/image-20210914004751452.png)
+
+### happen-before规则
+
+![image-20210914011228398](images/java面试复习/image-20210914011228398.png)
+
+![image-20210914011602816](images/java面试复习/image-20210914011602816.png)
+
+![image-20210914011804229](images/java面试复习/image-20210914011804229.png)
+
+### CAS与原子类
+
+![image-20210914011908392](images/java面试复习/image-20210914011908392.png)
+
+![image-20210914012453657](images/java面试复习/image-20210914012453657.png)
+
+![image-20210914014311802](images/java面试复习/image-20210914014311802.png)
+
+### 原子操作类
+
+1. AtomicInteger/AtomicBoolean等, 他们底层是用CAS技术+volatile实现的
+
+### Synchronized优化
+
+![image-20210914015352872](images/java面试复习/image-20210914015352872.png)
+
+![image-20210914015717530](images/java面试复习/image-20210914015717530.png)
+
+**无竞争情况:**
+
+![image-20210914020010266](images/java面试复习/image-20210914020010266.png)
+
+![image-20210914020413444](images/java面试复习/image-20210914020413444.png)
+
+**有竞争情况(锁膨胀):**
+
+![image-20210914020515218](images/java面试复习/image-20210914020515218.png)
+
+**重量锁:**
+
+![image-20210914020554907](images/java面试复习/image-20210914020554907.png)
+
+**偏向锁:**
+
+![image-20210914020628720](images/java面试复习/image-20210914020628720.png)
+
+**其他优化:**
+
+![image-20210914020653468](images/java面试复习/image-20210914020653468.png)
+
+# 笔试题目
+
+## 哲学家就餐问题模拟并解决
+
+```java
+package philospherEating;
+
+public class UndoDeadLock {
+public static class Chopstick {
+}
+public static class Philoshpher extends Thread{
+        private int index;
+        private Chopstick left;
+        private Chopstick right;
+
+        @Override
+        public void run() {
+                if((index%2)!=0){   //判断奇偶序号, 奇数先拿左筷子
+                        synchronized (left){
+                                try {
+                                        Thread.sleep(1+index);  //不用奇偶左撇子解决的话,保证会产生死锁链条
+                                } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                }
+                                synchronized (right){
+                                        try {
+                                                Thread.sleep(1);
+                                        } catch (InterruptedException e) {
+                                                e.printStackTrace();
+                                        }
+                                        System.out.println(index+"号哲学家已经吃完");
+                                }
+                        }
+                }
+                else{
+                        synchronized (right){
+                                try {
+                                        Thread.sleep(1+index);
+                                } catch (InterruptedException e) {
+                                        e.printStackTrace();
+                                }
+                                synchronized (left){
+                                        try {
+                                                Thread.sleep(1);
+                                        } catch (InterruptedException e) {
+                                                e.printStackTrace();
+                                        }
+                                        System.out.println(index+"号哲学家已经吃完");
+                                }
+                        }
+                }
+
+        }
+
+        public Philoshpher(int index, Chopstick left, Chopstick right) {
+                this.index = index;
+                this.left = left;
+                this.right = right;
+        }
+
+
+}
+    public static void main(String[] args) {
+
+
+            Chopstick cs0=new Chopstick();
+            Chopstick cs1=new Chopstick();
+            Chopstick cs2=new Chopstick();
+            Chopstick cs3=new Chopstick();
+            Chopstick cs4=new Chopstick();
+
+            Philoshpher p0=new Philoshpher(0,cs0,cs1);
+            Philoshpher p1=new Philoshpher(1,cs1,cs2);
+            Philoshpher p2=new Philoshpher(2,cs2,cs3);
+            Philoshpher p3=new Philoshpher(3,cs3,cs4);
+            Philoshpher p4=new Philoshpher(4,cs4,cs0);
+
+            p0.start();
+            p1.start();
+            p2.start();
+            p3.start();
+            p4.start();
+
+
+
+    }
+}
+
+```
+
+
+
+## 用两个线程数字字母交替输出的三种解决方案
+
+- LockSupport解决
+
+```java
+package JiaoTiShuChu1A2B3C;
+
+import java.util.concurrent.locks.LockSupport;
+
+/*以LockSupport中的park和unpark方式解决*/
+public class AnsForLockSupportPark {
+    static Thread t1=null,t2=null;
+    public static void main(String[] args) {
+        char[] num="12345678".toCharArray();
+        char[] ch="ABCDEFGH".toCharArray();
+
+       t1=new Thread(()->{
+            for(char c:num){
+                System.out.print(c); //打印数字
+                LockSupport.unpark(t2); //唤醒t2打印字母
+                LockSupport.park();  //停t1
+            }
+        },"t1");
+
+       t2=new Thread(()->{
+            for(char c:ch){
+                LockSupport.park();  //停t2
+                System.out.print(c);  //打印字母
+                LockSupport.unpark(t1);  //唤醒t1
+            }
+        },"t2");
+       t1.start();
+       t2.start();
+    }
+
+}
+
+```
+
+- synchronized解决(配合CountDownLatch)
+
+  ```java
+  package JiaoTiShuChu1A2B3C;
+  
+  import java.util.concurrent.CountDownLatch;
+  import java.util.concurrent.locks.LockSupport;
+  
+  /*
+  * 用synchronized-wait-notify方式配合CountdownLatch实现*/
+  public class AnsForSynchronizedAndWait {
+      static Thread t1=null,t2=null;
+      static  CountDownLatch countDownLatch=new CountDownLatch(1);  //用于线程同步(注意要静态的给线程使用)
+      public static void main(String[] args) {
+  
+          Object lock=new Object();  //锁
+          char[] num="12345678".toCharArray();
+          char[] ch="ABCDEFGH".toCharArray();
+  
+          t1=new Thread(()->{
+              countDownLatch.countDown();
+              synchronized (lock){
+                  for(char c:num){
+                      System.out.print(c); //打印数字
+                      lock.notify();
+                      try {
+                          lock.wait();
+                      } catch (InterruptedException e) {
+                          e.printStackTrace();
+                      }
+                  }
+                  lock.notify();  //注意要循环后也要notify一下否则会出现程序运行不结束(有个线程在阻塞)
+              }
+  
+          },"t1");
+  
+          t2=new Thread(()->{
+              try {
+                  countDownLatch.await();
+              } catch (InterruptedException e) {
+                  e.printStackTrace();
+              }
+              synchronized (lock){
+                  for(char c:ch){
+                      System.out.print(c); //打印字母
+                      lock.notify();
+                      try {
+                          lock.wait();
+                      } catch (InterruptedException e) {
+                          e.printStackTrace();
+                      }
+                  }
+                  lock.notify();
+              }
+          },"t2");
+  
+          t2.start();t1.start();  //先t2也没问题, 线程用countdownlatch同步了
+      }
+  }
+  ```
+
+- ReentrantLock解决方案(配合CountDawnLatch)
+
+  ```java
+  package JiaoTiShuChu1A2B3C;
+  
+  import java.util.concurrent.CountDownLatch;
+  import java.util.concurrent.locks.Condition;
+  import java.util.concurrent.locks.Lock;
+  import java.util.concurrent.locks.ReentrantLock;
+  
+  /*
+  * 用ReentrantLock的signal和wait方式来配合CountdownLatch实现输出*/
+  public class AnsForReentrantLock {
+      static Thread t1=null,t2=null;
+      static CountDownLatch countDownLatch=new CountDownLatch(1);  //用于线程同步(注意要静态的给线程使用)
+      public static void main(String[] args) {
+  
+          Lock lock=new ReentrantLock();  //锁
+          Condition conditionT1=lock.newCondition();//条件, 用队列去理解
+          Condition conditionT2=lock.newCondition();//条件, 用队列去理解
+  
+          char[] num="12345678".toCharArray();
+          char[] ch="ABCDEFGH".toCharArray();
+  
+          t1=new Thread(()->{
+              countDownLatch.countDown();
+              lock.lock();  //加锁
+                  for(char c:num){
+                      System.out.print(c); //打印数字
+                      conditionT2.signal();  //唤醒Conditiont2里面 的t2
+                      try {
+                          conditionT1.await();  //把t1放进ConditionT1
+                      } catch (InterruptedException e) {
+                          e.printStackTrace();
+                      }
+                  }
+                  conditionT2.signal(); //注意要循环后也要signal一下否则会出现程序运行不结束(有个线程在阻塞队列)
+              lock.unlock();  //解锁
+  
+          },"t1");
+  
+          t2=new Thread(()->{
+              try {
+                  countDownLatch.await();
+              } catch (InterruptedException e) {
+                  e.printStackTrace();
+              }
+              lock.lock();
+                  for(char c:ch){
+                      System.out.print(c); //打印字母
+                      conditionT1.signal();
+                      try {
+                          conditionT2.await();
+                      } catch (InterruptedException e) {
+                          e.printStackTrace();
+                      }
+                  }
+                  conditionT1.signal();
+              lock.unlock();
+          },"t2");
+  
+          t2.start();t1.start();  //先t2也没问题, 线程用countdownlatch同步了
+      }
+  }
+  ```
