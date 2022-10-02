@@ -200,7 +200,7 @@ public class Client {
 
 首先来一张ClassPathXmlApplicationContext类的依赖图
 
-![image-20221002150154620](/Users/steven_shaw/Documents/note/images/Spring源码阅读笔记/image-20221002150154620.png)
+![image-20221002150154620](./images/Spring源码阅读笔记/image-20221002150154620.png)
 
 针对继承图, 可以得知, ClassPathXmlApplicationContext继承了AbstractXmlApplicationContext继承了AbstractRefreshableConfigApplicationContext继承了AbstractRefreshableApplicationContext继承了AbstractApplicationContext这四个主要的继承关系
 
@@ -396,7 +396,7 @@ protected void addSingleton(String beanName, Object singletonObject) {
 
 最终发现是在DefaultSingletonBeanRegistry类中的addSingleton()方法中将创建好的实例对象添加到IOC容器中
 
-![image-20221002181034882](/Users/steven_shaw/Documents/note/images/Spring源码阅读笔记/image-20221002181034882.png)
+![image-20221002181034882](./images/Spring源码阅读笔记/image-20221002181034882.png)
 
 由此可得出第三个问题的答案
 
