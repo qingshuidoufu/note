@@ -433,3 +433,146 @@ public class StreamAPI {
 
 }
 ```
+
+## lambda处理异常、ifElse、存在则消费问题
+
+### 处理异常
+
+```java
+package Lambda.funtionToKillIfElse;
+
+@FunctionalInterface
+public interface ThrowExceptionFunction {
+    /**
+     * 抛出异常信息
+     * @param message
+     */
+    void throwMessage(String message);
+}
+```
+
+```java
+package Lambda.funtionToKillIfElse;
+
+public class VUtils {
+    public static ThrowExceptionFunction isTrue(boolean b){
+        return (message -> {
+            if(b){
+                throw new RuntimeException(message);
+            }
+        });
+    }
+
+    public static void main(String[] args) {
+        /**
+         * 函数式接口写的工具类
+         * 1. VUtils工具类，isTure的方法返回值为一个函数式接口
+         * 2. 故可以在工具类中写一个返回值符合函数式接口的匿名函数
+         * 3. 工具类中这个isTrue匹配的时候，匹配函数式接口的的方法
+         * 4. 则相当于调用了匿名函数
+         */
+        VUtils.isTrue(true).throwMessage("自定义异常");
+    }
+}
+```
+
+### 处理IfElse
+
+```java
+package Lambda.处理if分支操作;
+
+/**
+ * 分支处理接口
+ */
+@FunctionalInterface
+public interface BranchHandle {
+    /**
+     * 分支操作
+     * @param trueHandle 函数式接口的，true时要进行的操作
+     * @param falseHandle 函数式接口的，false时要进行的操作
+     */
+    void trueOrFalseHandle(Runnable trueHandle, Runnable falseHandle);
+}
+```
+
+```java
+package Lambda.处理if分支操作;
+
+public class IfUtils {
+    public static BranchHandle isTrueOrFalse(boolean b){
+        return ((trueHandle, falseHandle) -> {
+            if (b) {
+                trueHandle.run();
+            }else{
+                falseHandle.run();
+            }
+        });
+    }
+
+    public static void main(String[] args) {
+        /**
+         * IfUtils工具类，isTrueOrFalse为一个返回函数式接口的方法，匹配BranchHandle的方法
+         * 在匿名方法中接受两个函数式接口的参数，
+         * 所以这个方法可以自己写匿名函数，并且可以写两个匿名函数
+         * 分别代表了true和else需要执行的功能
+         */
+        IfUtils.isTrueOrFalse(false).trueOrFalseHandle(()->{
+            System.out.println("true,我要开始秀了");
+        },()->{
+            System.out.println("false,不秀了，快溜");
+        });
+    }
+}
+```
+
+### 处理存在则消费的问题
+
+```java
+package Lambda.存在则消费;
+
+import java.util.function.Consumer;
+
+/**
+ * 空值和非空值分支处理
+ * @param <T>
+ */
+public interface PresentOrElseHandle<T extends Object> {
+    /**
+     * 值不为空的时候执行消费操作
+     * 值为空的执行其他操作
+     * @param action 值不为空，执行消费操作
+     * @param emptyAction 值为空执行的操作
+     */
+    void presentOrElseHandle(Consumer<? super T> action, Runnable emptyAction);
+}
+```
+
+```java
+package Lambda.存在则消费;
+
+
+public class EmptyUtils {
+    public static PresentOrElseHandle<?> isBlankOrNotBlank(String str){
+        return (consumer,runnable)->{
+            if(str ==null ||str.length()==0){
+                runnable.run();
+            }else{
+                consumer.accept(str);
+            }
+        };
+    }
+
+    public static void main(String[] args) {
+        /**
+         * 这样子的流式编程的设计，主要设计三种角色
+         * 1. 自定义函数式接口：作为工具类方法的返回值来调用匿名函数（参数也为函数式接口）
+         * 2. 工具类：包含工具方法，参数为真实值，匹配函数式接口调用参数（函数式的）的方法
+         * 3. 调用者：使用工具类，调用工具类方法，传入真是值，调用自定义函数式接口的方法，传入匿名函数，
+         *          匿名函数代表了自定义函数式接口的参数
+         */
+        EmptyUtils.isBlankOrNotBlank("hello").presentOrElseHandle(System.out::println,()->{
+            System.out.println("空字符串");
+        });
+    }
+}
+```
